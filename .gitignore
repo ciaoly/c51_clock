@@ -1,0 +1,13 @@
+*.OBJ
+*.LST
+*.workspace
+*.ciaoly
+exercise.uvopt
+exercise.c
+exercise.uvproj
+*.DBK
+*.bak
+*.plg
+*.hex
+*.htm
+YY

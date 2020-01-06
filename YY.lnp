@@ -1,0 +1,6 @@
+"1602.obj",
+"DS18B20.obj",
+"ds1302.obj",
+"lcd1602.obj" 
+TO "YY" 
+RAMSIZE(256) 
