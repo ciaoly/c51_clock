@@ -7,7 +7,7 @@
 * 最低位LSB(D0)为逻辑0，指定写操作(输入)， D0=1，指定读操作(输出)。
 */
 
-uchar read_ds1302(uchar com) // com 命令
+uchar read_ds1302(uchar com, char bcd_flag) // com 命令, bcd_flag 是否返回 bcd 码
 {
 	uchar i, val;
 	ds_clk = 0;
@@ -28,7 +28,8 @@ uchar read_ds1302(uchar com) // com 命令
 			val |= 0x01 << i;
 	}
 	ds_rst = 0;
-	val = (val / 16 * 10) + val % 16;
+	if (!bcd_flag) // 如果设置 bcdFlag, 返回 bcd 码
+		val = (val / 16 * 10) + val % 16;
 	return val;
 }
 

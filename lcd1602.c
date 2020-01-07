@@ -63,9 +63,9 @@ void write_lcd1602(uchar com, uchar i)
 void display_lcd1602_byte(uchar h, uchar l, uchar val)
 {
 	if (h)
-		l = l + 0x40;
-	write_lcd1602(0x80 + l, 0);
-	write_lcd1602(val, 1);
+		l = l + 0x40;			// 0x40 表示第二行的起始地址
+	write_lcd1602(0x80 + l, 0); // 发指令, 0x80: 置数据存贮器地址
+	write_lcd1602(val, 1);		// 发数据
 }
 
 void display_lcd1602_text(uchar h, uchar l, uchar *val)

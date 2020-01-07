@@ -2,19 +2,59 @@
 #include "lcd1602.h"
 #include "ds1302.h"
 
-sbit buzz = P1 ^ 0;
+#define de_bcd(x) ((x / 16 * 10) + x % 16)
+#define abc(x) (x)
+#define display_shi(s, p)                                        \
+	if (timing_flat == 24)                                       \
+	{                                                            \
+		display_lcd1602_byte(1, p, ' ');                         \
+		display_lcd1602_byte(1, p + 2, s / 10 + '0');            \
+		display_lcd1602_byte(1, p + 3, s % 10 + '0');            \
+	}                                                            \
+	else                                                         \
+	{                                                            \
+		if (s > 12)                                              \
+		{                                                        \
+			display_lcd1602_byte(1, p, 'P');                     \
+			display_lcd1602_byte(1, p + 2, (s - 12) / 10 + '0'); \
+			display_lcd1602_byte(1, p + 3, (s - 12) % 10 + '0'); \
+		}                                                        \
+		else                                                     \
+		{                                                        \
+			display_lcd1602_byte(1, p, 'A');                     \
+			display_lcd1602_byte(1, p + 2, s / 10 + '0');        \
+			display_lcd1602_byte(1, p + 3, s % 10 + '0');        \
+		}                                                        \
+	}
+
+#define display_laba(p)         \
+	uchar i;                    \
+	uchar *z;                   \
+	write_lcd1602(0x40, 0);     \
+	if (stop_buzz)              \
+		z = w2;                 \
+	else                        \
+		z = w1;                 \
+	for (i = 0; i < 8; i++)     \
+		write_lcd1602(z[i], 1); \
+	write_lcd1602(0xc0 + p, 0); \
+	write_lcd1602(0x00, 1);
+
+sbit buzz = P2 ^ 2;
+sbit led = P2 ^ 3;
 sbit s1 = P3 ^ 0;
 sbit s2 = P3 ^ 1;
 sbit s3 = P3 ^ 2;
 sbit s4 = P3 ^ 3;
 
-char shi = 0, fen = 0, miao = 0, nian = 20, yue = 1, ri = 1, xingqi = 3, ashi, afen;
-uchar s1num = 0, s4num; //s1num 记录按键 1 按下的次数, s4num 记录按键 4 按下的次数
-uchar flag = 1, flag1;  // flag 是设置暂停标志, flag1 是设闹钟标志,
+char shi = 0, fen = 0, miao = 0, nian = 20, yue = 1, ri = 1, xingqi = 3, ashi = 0, afen = 0;
+uchar s1num = 0, s4num;										//s1num 记录按键 1 按下的次数, s4num 记录按键 4 按下的次数
+uchar flag = 1, flag1 = 0, stop_buzz = 0, timing_flat = 24; // flag 是设置暂停标志, flag1 是设闹钟标志,
 
 uchar code w1[] = {0x01, 0x03, 0x1D, 0x11, 0x1D, 0x03, 0x01, 0x00};
+uchar code w2[] = {0x05, 0x0E, 0x74, 0x4C, 0x54, 0x74, 0x4C, 0x84};
 uchar code tab0[] = "20  -  -   day: ";
-uchar code tab1[] = "    :     :  :  ";
+uchar code tab1[] = "--:--     :  :  ";
 uchar code tab2[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
 uchar code tab5[] = "OFF";
 uchar code tab4[] = "reset clock";
@@ -23,6 +63,8 @@ void display();
 void keyscan();
 void buzzer();
 void naozhong();
+void zhengdian();
+void liangdeng();
 
 void main()
 {
@@ -37,36 +79,55 @@ void main()
 		{
 			naozhong(); // 检查闹钟时间是否已到
 
-			display_lcd1602_byte(0, 2, read_ds1302(0x8d) / 10 + '0');
-			display_lcd1602_byte(0, 3, read_ds1302(0x8d) % 10 + '0');
+			display_lcd1602_byte(0, 2, read_ds1302(0x8d, 0) / 10 + '0');
+			display_lcd1602_byte(0, 3, read_ds1302(0x8d, 0) % 10 + '0');
 
-			display_lcd1602_byte(0, 5, read_ds1302(0x89) / 10 + '0');
-			display_lcd1602_byte(0, 6, read_ds1302(0x89) % 10 + '0');
+			display_lcd1602_byte(0, 5, read_ds1302(0x89, 0) / 10 + '0');
+			display_lcd1602_byte(0, 6, read_ds1302(0x89, 0) % 10 + '0');
 
-			display_lcd1602_byte(0, 8, read_ds1302(0x87) / 10 + '0');
-			display_lcd1602_byte(0, 9, read_ds1302(0x87) % 10 + '0');
+			display_lcd1602_byte(0, 8, read_ds1302(0x87, 0) / 10 + '0');
+			display_lcd1602_byte(0, 9, read_ds1302(0x87, 0) % 10 + '0');
 
-			display_lcd1602_byte(0, 15, read_ds1302(0x8b) % 10 + '0');
+			display_lcd1602_byte(0, 15, read_ds1302(0x8b, 0) % 10 + '0');
 
-			display_lcd1602_byte(1, 8, read_ds1302(0x85) / 10 + '0');
-			display_lcd1602_byte(1, 9, read_ds1302(0x85) % 10 + '0');
+			// 实现12/ 24进制转换
+			shi = read_ds1302(0x85, 0);
+			display_shi(shi, 6);
 
-			display_lcd1602_byte(1, 11, read_ds1302(0x83) / 10 + '0');
-			display_lcd1602_byte(1, 12, read_ds1302(0x83) % 10 + '0');
+			display_lcd1602_byte(1, 11, read_ds1302(0x83, 0) / 10 + '0');
+			display_lcd1602_byte(1, 12, read_ds1302(0x83, 0) % 10 + '0');
 
-			display_lcd1602_byte(1, 14, read_ds1302(0x81) / 10 + '0');
-			display_lcd1602_byte(1, 15, read_ds1302(0x81) % 10 + '0');
+			display_lcd1602_byte(1, 14, read_ds1302(0x81, 0) / 10 + '0');
+			display_lcd1602_byte(1, 15, read_ds1302(0x81, 0) % 10 + '0');
 		}
 	}
 }
 
 void keyscan()
 {
+	uchar i;
+	uchar *z;
 	if ((s1 == 0) && (s4num == 0)) // 按下按键 1 且没有激活闹钟设置功能
 	{
 		delay(5);
 		if (s1 == 0)
 		{
+			if (flag)
+			{ // 未进入设置模式
+				nian = read_ds1302(0x8d, 0);
+				delay(5);
+				yue = read_ds1302(0x89, 0);
+				delay(5);
+				ri = read_ds1302(0x87, 0);
+				delay(5);
+				xingqi = read_ds1302(0x8b, 0);
+				delay(5);
+				shi = read_ds1302(0x85, 0);
+				delay(5);
+				fen = read_ds1302(0x83, 0);
+				delay(5);
+				miao = read_ds1302(0x81, 0);
+			}
 			while (!s1)
 				; // 等待按钮释放, 进入时间设置模式
 			buzzer();
@@ -75,7 +136,7 @@ void keyscan()
 			flag = 0;				// 进入设置模式, 设置主循环暂停, 同时暂停刷新
 			s1num++;
 			switch (s1num)
-			{
+			{ // 设置光标操作
 			case 1:
 				write_lcd1602(0x0f, 0);
 				write_lcd1602(0x80 + 3, 0);
@@ -98,7 +159,7 @@ void keyscan()
 			case 7:
 				write_lcd1602(0x80 + 0x40 + 15, 0);
 				break;
-			case 8:
+			case 8: // 保存状态
 				write_lcd1602(0x0c, 0);
 				write_ds1302(0x8e, 80);
 				init_ds1302(nian, yue, ri, shi, fen, miao, xingqi);
@@ -126,7 +187,7 @@ void keyscan()
 					nian = 0;
 				display_lcd1602_byte(0, 2, tab2[nian / 10]);
 				display_lcd1602_byte(0, 3, tab2[nian % 10]);
-				write_lcd1602(0x80 + 3);
+				write_lcd1602(0x80 + 3, 0);
 				break;
 			case 2:
 				yue++;
@@ -155,8 +216,7 @@ void keyscan()
 				shi++;
 				if (shi == 24)
 					shi = 0;
-				display_lcd1602_byte(1, 8, tab2[shi / 10]);
-				display_lcd1602_byte(1, 9, tab2[shi % 10]);
+				display_shi(shi, 6);
 				write_lcd1602(0x80 + 0x40 + 9, 0);
 				break;
 			case 6:
@@ -196,7 +256,7 @@ void keyscan()
 					nian = 99;
 				display_lcd1602_byte(0, 2, tab2[nian / 10]);
 				display_lcd1602_byte(0, 3, tab2[nian % 10]);
-				write_lcd1602(0x80 + 3);
+				write_lcd1602(0x80 + 3, 0);
 				break;
 			case 2:
 				yue--;
@@ -225,8 +285,7 @@ void keyscan()
 				shi--;
 				if (shi == -1)
 					shi = 23;
-				display_lcd1602_byte(1, 8, tab2[shi / 10]);
-				display_lcd1602_byte(1, 9, tab2[shi % 10]);
+				display_shi(shi, 6);
 				write_lcd1602(0x80 + 0x40 + 9, 0);
 				break;
 			case 6:
@@ -293,7 +352,7 @@ void keyscan()
 				break;
 			}
 		}
-		if (s4 == 0) // 长按 (500ms) 按键 4 触发
+		if (s4 == 0) // 长按 (500ms) 按键 4 触发, 退出闹钟设置模式
 		{
 			while (!s4)
 				;
@@ -303,6 +362,8 @@ void keyscan()
 			display_lcd1602_text(0, 0, tab0);
 			display_lcd1602_text(1, 0, tab1);
 			flag = 1;
+			if (flag1)
+				display();
 		}
 	}
 	if (s4num != 0) // 进入闹钟设置模式
@@ -320,8 +381,7 @@ void keyscan()
 				ashi++;
 				if (ashi == 24)
 					ashi = 0;
-				display_lcd1602_byte(1, 5, tab2[ashi / 10]);
-				display_lcd1602_byte(1, 6, tab2[ashi % 10]);
+				display_shi(ashi, 3);
 				write_lcd1602(0x80 + 0x40 + 6, 0);
 				break;
 			case 3:
@@ -347,8 +407,7 @@ void keyscan()
 				ashi--;
 				if (ashi == -1)
 					ashi = 23;
-				display_lcd1602_byte(1, 5, tab2[ashi / 10]);
-				display_lcd1602_byte(1, 6, tab2[ashi % 10]);
+				display_shi(ashi, 3);
 				write_lcd1602(0x80 + 0x40 + 6, 0);
 				break;
 			case 3:
@@ -362,6 +421,40 @@ void keyscan()
 			}
 		}
 	}
+	else
+	{
+		if (s1num != 0)
+			return;
+		if (s2 == 0)
+			delay(5);
+		if (s2 == 0)
+		{
+			while (!s2)
+				;
+			buzzer();
+			if (timing_flat == 12)
+				timing_flat = 24;
+			else
+				timing_flat = 12;
+		}
+		if (s3 == 0)
+			delay(5);
+		if (s3 == 0)
+		{
+			while (!s3)
+				;
+			stop_buzz = !stop_buzz;
+			write_lcd1602(0x40, 0);
+			if (stop_buzz)
+				z = w2;
+			else
+				z = w1;
+			for (i = 0; i < 8; i++)
+				write_lcd1602(z[i], 1);
+			write_lcd1602(0xc0 + 5, 0);
+			write_lcd1602(0x00, 1);
+		}
+	}
 }
 
 void buzzer()
@@ -371,26 +464,55 @@ void buzzer()
 	buzz = 1;
 }
 
+void liangdeng()
+{
+	led = 0;
+	delay(50);
+	led = 1;
+}
+
 void naozhong()
 {
+	// char diff_fen = 0; // 一个入栈指令
+	delay(5);
+	shi = read_ds1302(0x85, 0);
+	delay(5);
+	fen = read_ds1302(0x83, 0);
+	delay(5);
+	miao = read_ds1302(0x81, 0);
+	zhengdian();
 	if (flag1)
 	{
-		display();
-		if (ashi == read_ds1302(0x85))
+		// display();
+		if (ashi == shi && afen == fen)
 		{
-			delay(5);
-			if (afen == read_ds1302(0x83))
+			// diff_fen = read_ds1302(0x83, 0) - 1 - afen;
+			// if (abc(diff_fen) <= 1) // [afen, afen + 2]
+			if (!stop_buzz)
 				buzzer();
+			// else
+			// {
+			// 	stop_buzz = 0;
+			// }
 		}
 	}
 }
 
-void display()
+void zhengdian()
 {
-	uchar i;
-	write_lcd1602(0x40, 0);
-	for (i = 0; i < 8; i++)
-		write_lcd1602(w1[i], 1);
-	write_lcd1602(0xc0 + 7, 0);
-	write_lcd1602(0x00, 1);
+	if (shi + fen + miao == 0)
+	{
+		buzzer();
+		buzzer();
+		buzzer();
+	}
+}
+
+void display() // 显示闹钟开启标志
+{
+	display_laba(5);
+	display_lcd1602_byte(1, 0, ashi / 10 + '0');
+	display_lcd1602_byte(1, 1, ashi % 10 + '0');
+	display_lcd1602_byte(1, 3, afen / 10 + '0');
+	display_lcd1602_byte(1, 4, afen % 10 + '0');
 }
